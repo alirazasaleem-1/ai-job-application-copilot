@@ -10,7 +10,7 @@ function resolveModel() {
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY
   if (geminiKey) {
     const google = createGoogleGenerativeAI({ apiKey: geminiKey })
-    return google("gemini-2.5-flash")
+    return google("gemini-flash-latest")
   }
   return "google/gemini-3.6-flash"
 }
