@@ -1,15 +1,23 @@
-import { generateObject } from "ai"
+import { generateObject, NoObjectGeneratedError } from "ai"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { z } from "zod"
 
+export const runtime = "nodejs"
 export const maxDuration = 60
+
+const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY
+// The Vercel AI Gateway is available when an explicit key is set or when the
+// deployment provides an OIDC token (automatic on Vercel).
+const GATEWAY_AVAILABLE = Boolean(process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN)
+
+// True when the server has some way to reach a model.
+const AI_CONFIGURED = Boolean(GEMINI_KEY) || GATEWAY_AVAILABLE
 
 // Prefer a direct Gemini API key (matching the project's original setup);
 // otherwise fall back to the Vercel AI Gateway model string.
 function resolveModel() {
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY
-  if (geminiKey) {
-    const google = createGoogleGenerativeAI({ apiKey: geminiKey })
+  if (GEMINI_KEY) {
+    const google = createGoogleGenerativeAI({ apiKey: GEMINI_KEY })
     return google("gemini-flash-latest")
   }
   return "google/gemini-3.6-flash"
@@ -63,7 +71,27 @@ const analysisSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const { resume, jobDescription } = await req.json()
+    if (!AI_CONFIGURED) {
+      return Response.json(
+        {
+          error:
+            "AI is not configured on the server. Add a GEMINI_API_KEY environment variable (or enable the Vercel AI Gateway) and redeploy.",
+        },
+        { status: 503 },
+      )
+    }
+
+    let body: unknown
+    try {
+      body = await req.json()
+    } catch {
+      return Response.json({ error: "Invalid request. Expected JSON." }, { status: 400 })
+    }
+
+    const { resume, jobDescription } = (body ?? {}) as {
+      resume?: unknown
+      jobDescription?: unknown
+    }
 
     if (!resume || typeof resume !== "string" || resume.trim().length < 30) {
       return Response.json(
